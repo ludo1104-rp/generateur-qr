@@ -295,6 +295,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
 /* Aperçu ----------------------------------------------------------------- */
 
 .stage {
+  position: relative;
   display: grid;
   place-items: center;
   padding: clamp(1rem, 4vw, 2rem);
@@ -307,7 +308,24 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   background-position: 0 0, 10px 10px;
 }
 
-#apercu { display: block; width: 100%; max-width: 22rem; height: auto; }
+#apercu { display: block; width: 100%; max-width: 22rem; height: auto; transition: opacity 0.3s var(--ease); }
+/* Premier affichage : un exemple estompé, marqué « Exemple », tant
+   qu’aucun lien n’est collé. */
+.stage.exemple #apercu { opacity: 0.45; }
+.badge-exemple {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: #fff;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 .placeholder {
   display: grid;
   place-items: center;
@@ -427,6 +445,10 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   color: var(--muted);
 }
 .foot a:hover { color: var(--ink); }
+/* Flèche dessinée (le caractère ↗ devient un emoji coloré sur iPhone). */
+.lien-site { display: inline-flex; align-items: center; gap: 0.3rem; }
+.fleche { flex: none; transition: transform 0.2s var(--ease); }
+.lien-site:hover .fleche { transform: translate(1px, -1px); }
 .mentions { flex-basis: 100%; margin-top: 0.75rem; font-size: 0.75rem; line-height: 1.55; color: var(--muted); }
 .mentions p { margin: 0; }
 
@@ -454,6 +476,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
       <div class="preview-inner">
         <h2 id="titre-apercu" class="sr-only">Aperçu</h2>
         <div class="stage">
+          <span class="badge-exemple" id="badge-exemple" hidden>Exemple</span>
           <canvas id="apercu" role="img" aria-label="Aperçu du QR code"></canvas>
           <p class="placeholder" id="vide-apercu" hidden>Collez un lien pour voir votre QR code.</p>
         </div>
@@ -593,9 +616,9 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
 
 <footer class="foot">
   <span>Ludo · @rprof_1</span>
-  <a href="https://rprof1.com">rprof1.com ↗</a>
+  <a href="https://rprof1.com" class="lien-site">rprof1.com <svg class="fleche" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 7.5 7.5 2.5M3.5 2.5h4v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
   <div class="mentions">
-    <p>Version 1.4</p>
+    <p>Version 1.5</p>
     <p>Application produite par IA. Des erreurs peuvent survenir.</p>
     <p>Application développée par Claude AI sous la supervision de Ludo (@rprof_1).</p>
   </div>
@@ -888,7 +911,7 @@ const THEMES = [
 ];
 
 const DEFAUTS = {
-  texte: "https://rprof1.com",
+  texte: "",
   format: "carte",
   titre: "Scannez-moi",
   phrase: "",
@@ -908,7 +931,8 @@ const CLE_REGLAGES = "generateur-qr:reglages";
 const CLE_HISTORIQUE = "generateur-qr:historique";
 const MAX_HISTORIQUE = 50;
 const LIMITE_TITRE = 40;
-const NBSP = " ";
+const NBSP = "\u00a0";
+const LIEN_EXEMPLE = "https://rprof1.com";
 
 function lire(cle, defaut) {
   try {
@@ -1320,11 +1344,15 @@ async function dessinerApercu() {
   const t = ++jeton;
   const largeur = Math.min(apercu.parentElement.clientWidth || 352, 352) * Math.min(window.devicePixelRatio || 1, 3);
   const tmp = document.createElement("canvas");
-  const res = await rendre(S, largeur, tmp);
+  // Champ vide : on montre un exemple (vers rprof1.com) avec vos réglages.
+  const exemple = !S.texte.trim();
+  const res = await rendre(exemple ? Object.assign({}, S, { texte: LIEN_EXEMPLE }) : S, largeur, tmp);
   if (t !== jeton) return;
 
   const alertes = [];
   $("lisible").textContent = "";
+  document.querySelector(".stage").classList.toggle("exemple", exemple);
+  $("badge-exemple").hidden = !exemple;
   apercu.hidden = !!res.erreur;
   flottanteErreur = !!res.erreur;
   majFlottante();
@@ -1341,6 +1369,13 @@ async function dessinerApercu() {
     apercu.getContext("2d").drawImage(tmp, 0, 0);
     dessinerFlottante(tmp);
     const q = res.qr;
+    if (exemple) {
+      $("impression").textContent = `Collez votre lien pour créer votre QR code.`;
+      apercu.setAttribute("aria-label", "Exemple de QR code");
+      $("alertes").innerHTML = "";
+      clearTimeout(verifTimer);
+      return;
+    }
     // Taille minimale conseillée : 0,6 mm par module, marge blanche comprise,
     // arrondie au demi-centimètre supérieur.
     const cm = Math.max(2, Math.ceil(((q.n + 8) * 0.06) * 2) / 2);
@@ -1483,7 +1518,11 @@ function nomFichier(s) {
 $("telecharger").addEventListener("click", async () => {
   const c = document.createElement("canvas");
   const res = await rendre(S, S.export, c);
-  if (res.erreur) { champs.texte.focus(); return; }
+  if (res.erreur) {
+    champs.texte.focus();
+    if (res.erreur === "vide") $("alertes").innerHTML = `<li>Collez d’abord votre lien${NBSP}: l’exemple ne se télécharge pas.</li>`;
+    return;
+  }
   const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
   if (!blob) return;
   const a = document.createElement("a");
