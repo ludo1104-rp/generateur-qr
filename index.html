@@ -342,18 +342,13 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
     border-radius: 14px;
     background: #fff;
     pointer-events: none;
-    transform-origin: 100% 100%;
-    will-change: opacity, transform;
-    /* Apparition : montée douce depuis le coin, un peu plus lente que la sortie. */
-    transition: opacity 0.38s var(--ease), transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+    /* Animée en JavaScript : le grand aperçu « tombe » en rétrécissant
+       jusqu’ici quand on descend, et y remonte quand on revient en haut. */
+    transform-origin: 0 0;
+    will-change: transform, opacity;
   }
   .flottante canvas { display: block; width: 100%; height: auto; border-radius: 10px; }
-  .flottante.cachee {
-    opacity: 0;
-    transform: translateY(0.75rem) scale(0.9);
-    visibility: hidden;
-    transition: opacity 0.22s var(--ease), transform 0.22s var(--ease), visibility 0s 0.22s;
-  }
+  .flottante.cachee { opacity: 0; visibility: hidden; }
 }
 
 /* Téléphone : bouton de téléchargement toujours visible en bas d’écran. */
@@ -600,7 +595,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   <span>Ludo · @rprof_1</span>
   <a href="https://rprof1.com">rprof1.com ↗</a>
   <div class="mentions">
-    <p>Version 1.3</p>
+    <p>Version 1.4</p>
     <p>Application produite par IA. Des erreurs peuvent survenir.</p>
     <p>Application développée par Claude AI sous la supervision de Ludo (@rprof_1).</p>
   </div>
@@ -1595,8 +1590,52 @@ $("telecharger-mobile").addEventListener("click", () => $("telecharger").click()
 let flottanteErreur = false;
 let apercuVisible = true;
 let saisieActive = false;
-function majFlottante() {
-  $("flottante").classList.toggle("cachee", flottanteErreur || apercuVisible || saisieActive);
+let flottanteAffichee = false;
+let animFlottante = null;
+
+// Décalage et échelle pour superposer la carte au grand aperçu (technique
+// « FLIP » : on part de la position de l’aperçu et on revient à la normale).
+function versApercu(fl) {
+  const de = apercu.getBoundingClientRect();
+  const a = fl.getBoundingClientRect();
+  return `translate(${de.left - a.left}px, ${de.top - a.top}px) scale(${de.width / a.width})`;
+}
+
+// cause : "defilement" (effet de chute), sinon simple fondu (saisie, erreur).
+function majFlottante(cause) {
+  const fl = $("flottante");
+  const afficher = !(flottanteErreur || apercuVisible || saisieActive);
+  if (afficher === flottanteAffichee) return;
+  flottanteAffichee = afficher;
+  if (animFlottante) { animFlottante.cancel(); animFlottante = null; }
+  const sansAnimation = !fl.animate || getComputedStyle(fl).display === "none"
+    || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const chute = cause === "defilement" && !apercu.hidden;
+
+  if (afficher) {
+    fl.classList.remove("cachee");
+    if (sansAnimation) return;
+    animFlottante = chute
+      ? fl.animate([{ transform: versApercu(fl), opacity: 0.5 }, { transform: "none", opacity: 1 }],
+          { duration: 620, easing: "cubic-bezier(0.25, 0.8, 0.25, 1)" })
+      : fl.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }],
+          { duration: 220, easing: "ease-out" });
+  } else {
+    if (sansAnimation) { fl.classList.add("cachee"); return; }
+    animFlottante = chute
+      ? fl.animate([{ transform: "none", opacity: 1 }, { transform: versApercu(fl), opacity: 0 }],
+          { duration: 420, easing: "cubic-bezier(0.4, 0, 0.2, 1)" })
+      : fl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: "ease-out" });
+    // Sécurité : la carte est masquée même si l’animation ne se termine pas
+    // (onglet en arrière-plan…), sauf si elle a été réaffichée entre-temps.
+    const anim = animFlottante;
+    const masquer = () => {
+      if (!flottanteAffichee) fl.classList.add("cachee");
+      if (animFlottante === anim) animFlottante = null;
+    };
+    anim.onfinish = masquer;
+    setTimeout(masquer, (chute ? 420 : 180) + 120);
+  }
 }
 // Calcul direct au défilement (plus fiable qu’IntersectionObserver ici) :
 // l’aperçu compte comme visible tant qu’un quart de sa hauteur est à l’écran.
@@ -1611,7 +1650,7 @@ function verifierApercu() {
   const part = visiblePx / Math.min(r.height, h);
   if (apercuVisible && part < 0.15) apercuVisible = false;
   else if (!apercuVisible && part > 0.35) apercuVisible = true;
-  majFlottante();
+  majFlottante("defilement");
 }
 function prevoirCalcul() {
   if (calculPrevu) return;
