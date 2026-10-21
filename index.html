@@ -341,7 +341,20 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
     backdrop-filter: blur(12px);
     border-top: 1px solid var(--line);
   }
-  .barre .btn { width: 100%; }
+  .barre-inner { display: flex; align-items: center; gap: 0.75rem; }
+  .barre .btn { flex: 1; }
+  /* Miniature du QR : on voit le résultat changer en réglant, sans remonter. */
+  .miniature {
+    flex: none;
+    width: 3.25rem;
+    height: 3.25rem;
+    padding: 0.2rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .miniature canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
   body { padding-bottom: 5.5rem; }
 }
 
@@ -410,7 +423,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
 <body>
 
 <header class="top">
-  <a class="brand" href="https://rprof1.com">Ludo</a>
+  <a class="brand" href="https://rprof1.com" aria-label="Ludo, site rprof1.com">Ludo.</a>
   <span class="mono">Générateur de QR codes</span>
 </header>
 
@@ -567,17 +580,20 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   <span>Ludo · @rprof_1</span>
   <a href="https://rprof1.com">rprof1.com ↗</a>
   <div class="mentions">
-    <p>Version 1.0</p>
+    <p>Version 1.1</p>
     <p>Application produite par IA. Des erreurs peuvent survenir.</p>
     <p>Application développée par Claude AI sous la supervision de Ludo (@rprof_1).</p>
   </div>
 </footer>
 
 <div class="barre">
+ <div class="barre-inner">
+  <button type="button" class="miniature" id="miniature" aria-label="Voir l’aperçu en grand"><canvas id="miniature-canvas" width="104" height="104"></canvas></button>
   <button type="button" class="btn" id="telecharger-mobile">
     Télécharger le PNG
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v9m0 0L3 6m4 4 4-4M1.5 13h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
+ </div>
 </div>
 
 <script>
@@ -1294,6 +1310,8 @@ async function dessinerApercu() {
   const alertes = [];
   $("lisible").textContent = "";
   apercu.hidden = !!res.erreur;
+  miniatureErreur = !!res.erreur;
+  majMiniature();
   $("vide-apercu").hidden = !res.erreur;
   if (res.erreur) {
     $("impression").textContent = "";
@@ -1305,6 +1323,7 @@ async function dessinerApercu() {
     apercu.width = tmp.width;
     apercu.height = tmp.height;
     apercu.getContext("2d").drawImage(tmp, 0, 0);
+    dessinerMiniature(tmp);
     const q = res.qr;
     // Taille minimale conseillée : 0,6 mm par module, marge blanche comprise,
     // arrondie au demi-centimètre supérieur.
@@ -1550,6 +1569,32 @@ $("nouveau").addEventListener("click", () => {
 
 window.addEventListener("resize", planifier);
 $("telecharger-mobile").addEventListener("click", () => $("telecharger").click());
+$("miniature").addEventListener("click", () => {
+  const reduit = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelector(".stage").scrollIntoView({ behavior: reduit ? "auto" : "smooth", block: "center" });
+});
+
+// La miniature n’apparaît que si le grand aperçu est hors de l’écran.
+let miniatureErreur = false;
+let apercuVisible = true;
+function majMiniature() { $("miniature").hidden = miniatureErreur || apercuVisible; }
+if ("IntersectionObserver" in window) {
+  new IntersectionObserver((entrees) => {
+    apercuVisible = entrees[0].isIntersecting;
+    majMiniature();
+  }, { threshold: 0.25 }).observe(document.querySelector(".stage"));
+} else {
+  apercuVisible = false;
+}
+
+function dessinerMiniature(source) {
+  const c = $("miniature-canvas");
+  const ctx = c.getContext("2d");
+  const k = Math.min(c.width / source.width, c.height / source.height);
+  const w = source.width * k, h = source.height * k;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(source, (c.width - w) / 2, (c.height - h) / 2, w, h);
+}
 
 // Démarrage : attendre Figtree pour que l’aperçu ait la bonne police.
 remplir();
