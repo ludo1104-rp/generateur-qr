@@ -75,15 +75,23 @@ button, input, select { font: inherit; color: inherit; }
 /* En-tête ---------------------------------------------------------------- */
 
 .top {
+  /* En-tête qui reste en haut au défilement, comme sur rprof1.com. */
+  position: sticky;
+  top: 0;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 1.25rem var(--gutter);
-  border-bottom: 1px solid var(--line);
+  height: 4.25rem;
+  padding-inline: max(var(--gutter), calc((100% - 72rem) / 2 + var(--gutter)));
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.3s var(--ease);
 }
+.top.defile { border-bottom-color: var(--line); }
 
 .brand { font-weight: 600; letter-spacing: -0.01em; }
 
@@ -115,7 +123,7 @@ button, input, select { font: inherit; color: inherit; }
 @media (min-width: 900px) {
   .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 26rem); gap: 4rem; }
   .preview { order: 2; }
-  .preview-inner { position: sticky; top: 1.5rem; }
+  .preview-inner { position: sticky; top: 5.75rem; }
 }
 
 /* Formulaire ------------------------------------------------------------- */
@@ -372,7 +380,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
 /* Téléphone : bouton de téléchargement toujours visible en bas d’écran. */
 .barre { display: none; }
 @media (max-width: 899px) {
-  .download .btn { display: none; }
+  .download { display: none; }
   .barre {
     display: block;
     position: fixed;
@@ -487,17 +495,6 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
         <ul id="alertes" class="alerts" aria-live="polite"></ul>
 
         <div class="download">
-          <div>
-            <span class="label" id="lbl-taille">Taille du PNG</span>
-            <div class="row" style="margin-top:.6rem">
-              <div class="seg" role="radiogroup" aria-labelledby="lbl-taille">
-                <input type="radio" name="export" id="ex-512" value="512"><label for="ex-512">512&nbsp;px</label>
-                <input type="radio" name="export" id="ex-1024" value="1024"><label for="ex-1024">1024&nbsp;px</label>
-                <input type="radio" name="export" id="ex-2048" value="2048"><label for="ex-2048">2048&nbsp;px</label>
-              </div>
-            </div>
-            <p class="hint" style="margin-top:.5rem">512 pour un écran, 1024 pour un diaporama, 2048 pour une affiche.</p>
-          </div>
           <button type="button" class="btn" id="telecharger">
             Télécharger le PNG
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v9m0 0L3 6m4 4 4-4M1.5 13h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -594,6 +591,16 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
         </div>
         <p class="hint" style="margin-top:.75rem">Facultatif&nbsp;: une photo ou un logo, recadré en rond. L’image ne quitte pas votre appareil.</p>
       </fieldset>
+
+      <fieldset>
+        <legend class="mono">5 · Taille du PNG</legend>
+        <div class="seg" role="radiogroup" aria-label="Taille du PNG">
+          <input type="radio" name="export" id="ex-512" value="512"><label for="ex-512">512&nbsp;px</label>
+          <input type="radio" name="export" id="ex-1024" value="1024"><label for="ex-1024">1024&nbsp;px</label>
+          <input type="radio" name="export" id="ex-2048" value="2048"><label for="ex-2048">2048&nbsp;px</label>
+        </div>
+        <p class="hint" style="margin-top:.6rem">512 pour un écran, 1024 pour un diaporama, 2048 pour une affiche.</p>
+      </fieldset>
     </form>
   </div>
 
@@ -618,7 +625,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   <span>Ludo · @rprof_1</span>
   <a href="https://rprof1.com" class="lien-site">rprof1.com <svg class="fleche" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 7.5 7.5 2.5M3.5 2.5h4v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
   <div class="mentions">
-    <p>Version 1.5</p>
+    <p>Version 1.6</p>
     <p>Application produite par IA. Des erreurs peuvent survenir.</p>
     <p>Application développée par Claude AI sous la supervision de Ludo (@rprof_1).</p>
   </div>
@@ -1282,6 +1289,11 @@ const champs = {
 };
 
 let S = normaliser(lire(CLE_REGLAGES, null));
+// À chaque ouverture, on repart d’un lien vide (l’exemple s’affiche) ; seules
+// les préférences de style sont gardées. Les anciens QR sont dans l’historique.
+S.texte = DEFAUTS.texte;
+S.titre = DEFAUTS.titre;
+S.phrase = DEFAUTS.phrase;
 
 // Vignettes de thèmes
 // Chaque vignette montre une petite carte dans les couleurs du thème.
@@ -1370,7 +1382,7 @@ async function dessinerApercu() {
     dessinerFlottante(tmp);
     const q = res.qr;
     if (exemple) {
-      $("impression").textContent = `Collez votre lien pour créer votre QR code.`;
+      $("impression").textContent = "";
       apercu.setAttribute("aria-label", "Exemple de QR code");
       $("alertes").innerHTML = "";
       clearTimeout(verifTimer);
@@ -1624,6 +1636,7 @@ $("nouveau").addEventListener("click", () => {
 
 window.addEventListener("resize", planifier);
 $("telecharger-mobile").addEventListener("click", () => $("telecharger").click());
+
 // Carte flottante (téléphone) : visible seulement quand le grand aperçu est
 // sorti de l’écran et qu’aucun champ texte n’est en cours de saisie.
 let flottanteErreur = false;
@@ -1697,6 +1710,11 @@ function prevoirCalcul() {
   requestAnimationFrame(verifierApercu);
 }
 window.addEventListener("scroll", prevoirCalcul, { passive: true });
+// Filet sous l’en-tête dès que la page a défilé (comme rprof1.com).
+const entete = document.querySelector(".top");
+const majEntete = () => entete.classList.toggle("defile", window.scrollY > 8);
+window.addEventListener("scroll", majEntete, { passive: true });
+majEntete();
 window.addEventListener("resize", prevoirCalcul);
 verifierApercu();
 document.addEventListener("focusin", (e) => {
