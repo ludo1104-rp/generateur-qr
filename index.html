@@ -342,10 +342,18 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
     border-radius: 14px;
     background: #fff;
     pointer-events: none;
-    transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+    transform-origin: 100% 100%;
+    will-change: opacity, transform;
+    /* Apparition : montée douce depuis le coin, un peu plus lente que la sortie. */
+    transition: opacity 0.38s var(--ease), transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15);
   }
   .flottante canvas { display: block; width: 100%; height: auto; border-radius: 10px; }
-  .flottante.cachee { opacity: 0; transform: translateY(0.5rem); visibility: hidden; transition: opacity 0.2s var(--ease), transform 0.2s var(--ease), visibility 0s 0.2s; }
+  .flottante.cachee {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.9);
+    visibility: hidden;
+    transition: opacity 0.22s var(--ease), transform 0.22s var(--ease), visibility 0s 0.22s;
+  }
 }
 
 /* Téléphone : bouton de téléchargement toujours visible en bas d’écran. */
@@ -592,7 +600,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   <span>Ludo · @rprof_1</span>
   <a href="https://rprof1.com">rprof1.com ↗</a>
   <div class="mentions">
-    <p>Version 1.2</p>
+    <p>Version 1.3</p>
     <p>Application produite par IA. Des erreurs peuvent survenir.</p>
     <p>Application développée par Claude AI sous la supervision de Ludo (@rprof_1).</p>
   </div>
@@ -1598,7 +1606,11 @@ function verifierApercu() {
   const r = document.querySelector(".stage").getBoundingClientRect();
   const h = window.innerHeight || document.documentElement.clientHeight;
   const visiblePx = Math.min(r.bottom, h) - Math.max(r.top, 0);
-  apercuVisible = visiblePx > Math.min(r.height, h) * 0.25;
+  // Deux seuils (hystérésis) : la carte ne clignote pas quand on s’arrête
+  // pile à la limite de l’aperçu.
+  const part = visiblePx / Math.min(r.height, h);
+  if (apercuVisible && part < 0.15) apercuVisible = false;
+  else if (!apercuVisible && part > 0.35) apercuVisible = true;
   majFlottante();
 }
 function prevoirCalcul() {
@@ -1613,7 +1625,15 @@ document.addEventListener("focusin", (e) => {
   saisieActive = e.target.matches('input[type="text"], input[type="url"]');
   majFlottante();
 });
-document.addEventListener("focusout", () => { saisieActive = false; majFlottante(); });
+// Passage d’un champ à l’autre : on attend un instant pour ne pas faire
+// réapparaître la carte entre deux champs.
+document.addEventListener("focusout", () => {
+  setTimeout(() => {
+    const el = document.activeElement;
+    saisieActive = !!el && el.matches('input[type="text"], input[type="url"]');
+    majFlottante();
+  }, 150);
+});
 
 function dessinerFlottante(source) {
   const c = $("flottante-canvas");
