@@ -324,6 +324,30 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   text-align: center;
 }
 
+/* Téléphone (portrait) : la carte flotte en bas à droite pendant qu’on règle.
+   Elle ne reçoit aucun appui (pointer-events: none) pour ne jamais gêner la
+   navigation, et se cache quand l’aperçu est visible ou le clavier ouvert.
+   Tablettes et ordinateurs : rien, l’aperçu reste à côté des réglages. */
+.flottante { display: none; }
+@media (max-width: 599px) {
+  .flottante {
+    display: block;
+    position: fixed;
+    right: 0.75rem;
+    bottom: calc(5.25rem + env(safe-area-inset-bottom));
+    z-index: 9;
+    width: 6rem;
+    padding: 4px;
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    background: #fff;
+    pointer-events: none;
+    transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+  }
+  .flottante canvas { display: block; width: 100%; height: auto; border-radius: 10px; }
+  .flottante.cachee { opacity: 0; transform: translateY(0.5rem); visibility: hidden; transition: opacity 0.2s var(--ease), transform 0.2s var(--ease), visibility 0s 0.2s; }
+}
+
 /* Téléphone : bouton de téléchargement toujours visible en bas d’écran. */
 .barre { display: none; }
 @media (max-width: 899px) {
@@ -343,18 +367,6 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   }
   .barre-inner { display: flex; align-items: center; gap: 0.75rem; }
   .barre .btn { flex: 1; }
-  /* Miniature du QR : on voit le résultat changer en réglant, sans remonter. */
-  .miniature {
-    flex: none;
-    width: 3.25rem;
-    height: 3.25rem;
-    padding: 0.2rem;
-    border: 1px solid var(--line-strong);
-    border-radius: 12px;
-    background: #fff;
-    cursor: pointer;
-  }
-  .miniature canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
   body { padding-bottom: 5.5rem; }
 }
 
@@ -580,15 +592,16 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   <span>Ludo · @rprof_1</span>
   <a href="https://rprof1.com">rprof1.com ↗</a>
   <div class="mentions">
-    <p>Version 1.1</p>
+    <p>Version 1.2</p>
     <p>Application produite par IA. Des erreurs peuvent survenir.</p>
     <p>Application développée par Claude AI sous la supervision de Ludo (@rprof_1).</p>
   </div>
 </footer>
 
+<div class="flottante cachee" id="flottante" aria-hidden="true"><canvas id="flottante-canvas" width="192" height="192"></canvas></div>
+
 <div class="barre">
  <div class="barre-inner">
-  <button type="button" class="miniature" id="miniature" aria-label="Voir l’aperçu en grand"><canvas id="miniature-canvas" width="104" height="104"></canvas></button>
   <button type="button" class="btn" id="telecharger-mobile">
     Télécharger le PNG
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v9m0 0L3 6m4 4 4-4M1.5 13h11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -1310,8 +1323,8 @@ async function dessinerApercu() {
   const alertes = [];
   $("lisible").textContent = "";
   apercu.hidden = !!res.erreur;
-  miniatureErreur = !!res.erreur;
-  majMiniature();
+  flottanteErreur = !!res.erreur;
+  majFlottante();
   $("vide-apercu").hidden = !res.erreur;
   if (res.erreur) {
     $("impression").textContent = "";
@@ -1323,7 +1336,7 @@ async function dessinerApercu() {
     apercu.width = tmp.width;
     apercu.height = tmp.height;
     apercu.getContext("2d").drawImage(tmp, 0, 0);
-    dessinerMiniature(tmp);
+    dessinerFlottante(tmp);
     const q = res.qr;
     // Taille minimale conseillée : 0,6 mm par module, marge blanche comprise,
     // arrondie au demi-centimètre supérieur.
@@ -1569,31 +1582,47 @@ $("nouveau").addEventListener("click", () => {
 
 window.addEventListener("resize", planifier);
 $("telecharger-mobile").addEventListener("click", () => $("telecharger").click());
-$("miniature").addEventListener("click", () => {
-  const reduit = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  document.querySelector(".stage").scrollIntoView({ behavior: reduit ? "auto" : "smooth", block: "center" });
-});
-
-// La miniature n’apparaît que si le grand aperçu est hors de l’écran.
-let miniatureErreur = false;
+// Carte flottante (téléphone) : visible seulement quand le grand aperçu est
+// sorti de l’écran et qu’aucun champ texte n’est en cours de saisie.
+let flottanteErreur = false;
 let apercuVisible = true;
-function majMiniature() { $("miniature").hidden = miniatureErreur || apercuVisible; }
-if ("IntersectionObserver" in window) {
-  new IntersectionObserver((entrees) => {
-    apercuVisible = entrees[0].isIntersecting;
-    majMiniature();
-  }, { threshold: 0.25 }).observe(document.querySelector(".stage"));
-} else {
-  apercuVisible = false;
+let saisieActive = false;
+function majFlottante() {
+  $("flottante").classList.toggle("cachee", flottanteErreur || apercuVisible || saisieActive);
 }
+// Calcul direct au défilement (plus fiable qu’IntersectionObserver ici) :
+// l’aperçu compte comme visible tant qu’un quart de sa hauteur est à l’écran.
+let calculPrevu = false;
+function verifierApercu() {
+  calculPrevu = false;
+  const r = document.querySelector(".stage").getBoundingClientRect();
+  const h = window.innerHeight || document.documentElement.clientHeight;
+  const visiblePx = Math.min(r.bottom, h) - Math.max(r.top, 0);
+  apercuVisible = visiblePx > Math.min(r.height, h) * 0.25;
+  majFlottante();
+}
+function prevoirCalcul() {
+  if (calculPrevu) return;
+  calculPrevu = true;
+  requestAnimationFrame(verifierApercu);
+}
+window.addEventListener("scroll", prevoirCalcul, { passive: true });
+window.addEventListener("resize", prevoirCalcul);
+verifierApercu();
+document.addEventListener("focusin", (e) => {
+  saisieActive = e.target.matches('input[type="text"], input[type="url"]');
+  majFlottante();
+});
+document.addEventListener("focusout", () => { saisieActive = false; majFlottante(); });
 
-function dessinerMiniature(source) {
-  const c = $("miniature-canvas");
+function dessinerFlottante(source) {
+  const c = $("flottante-canvas");
+  const largeur = 192;
+  const hauteur = Math.round(source.height * largeur / source.width);
+  if (c.width !== largeur || c.height !== hauteur) { c.width = largeur; c.height = hauteur; }
   const ctx = c.getContext("2d");
-  const k = Math.min(c.width / source.width, c.height / source.height);
-  const w = source.width * k, h = source.height * k;
-  ctx.clearRect(0, 0, c.width, c.height);
-  ctx.drawImage(source, (c.width - w) / 2, (c.height - h) / 2, w, h);
+  ctx.clearRect(0, 0, largeur, hauteur);
+  ctx.drawImage(source, 0, 0, largeur, hauteur);
 }
 
 // Démarrage : attendre Figtree pour que l’aperçu ait la bonne police.
