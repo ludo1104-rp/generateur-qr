@@ -380,7 +380,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
 /* Téléphone : bouton de téléchargement toujours visible en bas d’écran. */
 .barre { display: none; }
 @media (max-width: 899px) {
-  .download { display: none; }
+  .preview-inner .download { display: none; } /* plus précis que .download plus bas */
   .barre {
     display: block;
     position: fixed;
@@ -625,7 +625,7 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   <span>Ludo · @rprof_1</span>
   <a href="https://rprof1.com" class="lien-site">rprof1.com <svg class="fleche" width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2.5 7.5 7.5 2.5M3.5 2.5h4v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
   <div class="mentions">
-    <p>Version 1.6</p>
+    <p>Version 1.7</p>
     <p>Application produite par IA. Des erreurs peuvent survenir.</p>
     <p>Application développée par Claude AI sous la supervision de Ludo (@rprof_1).</p>
   </div>
