@@ -156,7 +156,7 @@ input[type="text"], input[type="url"] {
 }
 input[type="text"]:hover, input[type="url"]:hover { border-color: #bdbdbd; }
 input[type="text"]:focus, input[type="url"]:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
-input[type="text"]::placeholder, input[type="url"]::placeholder { color: #9a9a9a; }
+input[type="text"]::placeholder, input[type="url"]::placeholder { color: #6f6f6f; }
 
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-top: 1rem; }
 
@@ -294,6 +294,9 @@ input[type="range"] { width: min(100%, 16rem); accent-color: var(--ink); }
   background-size: 100% 1px;
 }
 .link-btn:hover { color: var(--ink); }
+/* Zone de toucher agrandie sur iPad, sans changer le dessin du lien */
+.link-btn { position: relative; }
+.link-btn::after { content: ""; position: absolute; inset: -12px -8px; }
 
 .file-input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
 .file-input:focus-visible + label { outline: 2px solid var(--ink); outline-offset: 3px; }
@@ -1527,7 +1530,14 @@ function nomFichier(s) {
   return `qr-${slug(base)}.png`;
 }
 
+// Un double appui pendant le rendu ne doit pas télécharger deux fichiers.
+let telechargeEnCours = false;
 $("telecharger").addEventListener("click", async () => {
+  if (telechargeEnCours) return;
+  telechargeEnCours = true;
+  try { await telecharger(); } finally { telechargeEnCours = false; }
+});
+async function telecharger() {
   const c = document.createElement("canvas");
   const res = await rendre(S, S.export, c);
   if (res.erreur) {
@@ -1545,14 +1555,14 @@ $("telecharger").addEventListener("click", async () => {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   garder();
-});
+}
 
 function garder() {
   let liste = lire(CLE_HISTORIQUE, []);
   if (!Array.isArray(liste)) liste = [];
   const copie = Object.assign({}, S);
-  // Même adresse et même titre : on met à jour au lieu de dupliquer.
-  const i = liste.findIndex((e) => e.s && e.s.texte.trim() === copie.texte.trim() && (e.s.titre || "").trim() === copie.titre.trim());
+  // Même adresse, même titre et même format : on met à jour au lieu de dupliquer.
+  const i = liste.findIndex((e) => e.s && e.s.texte.trim() === copie.texte.trim() && (e.s.titre || "").trim() === copie.titre.trim() && e.s.format === copie.format);
   if (i >= 0) liste.splice(i, 1);
   liste.unshift({ id: Date.now().toString(36), date: new Date().toISOString(), s: copie });
   let retire = false;
